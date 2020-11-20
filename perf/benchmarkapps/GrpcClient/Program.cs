@@ -482,7 +482,7 @@ namespace GrpcClient
             };
         }
 
-        private static void ReceivedDateTime(DateTime start, DateTime end, int connectionId)
+        private static void RecordLatency(int latenchMs, int connectionId)
         {
             if (_stopped || _warmingUp)
             {
@@ -493,18 +493,17 @@ namespace GrpcClient
             {
                 _requestsPerConnection[connectionId] += 1;
 
-                var latency = end - start;
                 if (_options.Latency)
                 {
-                    _latencyPerConnection[connectionId].Add(latency.TotalMilliseconds);
+                    _latencyPerConnection[connectionId].Add(latenchMs);
                 }
                 else
                 {
                     var (sum, count) = _latencyAverage[connectionId];
-                    sum += latency.TotalMilliseconds;
+                    sum += latenchMs;
                     count++;
                     _latencyAverage[connectionId] = (sum, count);
-                    _maxLatency = Math.Max(latency.TotalMilliseconds, _maxLatency);
+                    _maxLatency = Math.Max(latenchMs, _maxLatency);
                 }
             }
         }
@@ -550,15 +549,13 @@ namespace GrpcClient
 
                 try
                 {
-                    var start = DateTime.UtcNow;
+                    var start = Environment.TickCount;
                     await call.RequestStream.WriteAsync(request);
                     if (!await call.ResponseStream.MoveNext())
                     {
                         throw new Exception("Unexpected end of stream.");
                     }
-                    var end = DateTime.UtcNow;
-
-                    ReceivedDateTime(start, end, connectionId);
+                    RecordLatency(Environment.TickCount - start, connectionId);
                 }
                 catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && cts.IsCancellationRequested)
                 {
@@ -597,14 +594,13 @@ namespace GrpcClient
 
                 try
                 {
-                    var start = DateTime.UtcNow;
+                    var start = Environment.TickCount;
                     if (!await call.ResponseStream.MoveNext())
                     {
                         throw new Exception("Unexpected end of stream.");
                     }
-                    var end = DateTime.UtcNow;
 
-                    ReceivedDateTime(start, end, connectionId);
+                    RecordLatency(Environment.TickCount - start, connectionId);
                 }
                 catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && cts.IsCancellationRequested)
                 {
@@ -637,11 +633,9 @@ namespace GrpcClient
 
                 try
                 {
-                    var start = DateTime.UtcNow;
+                    var start = Environment.TickCount;
                     var response = await client.UnaryCallAsync(CreateSimpleRequest(), CreateCallOptions());
-                    var end = DateTime.UtcNow;
-
-                    ReceivedDateTime(start, end, connectionId);
+                    RecordLatency(Environment.TickCount - start, connectionId);
                 }
                 catch (Exception ex)
                 {
