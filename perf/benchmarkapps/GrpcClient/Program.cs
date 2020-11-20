@@ -106,6 +106,12 @@ namespace GrpcClient
                 BenchmarksEventSource.Measure("IsServerGC", isServerGC.ToString());
                 BenchmarksEventSource.Measure("ProcessorCount", processorCount);
 
+                SimpleRequest = new SimpleRequest
+                {
+                    Payload = new Payload { Body = ByteString.CopyFrom(new byte[_options.RequestSize]) },
+                    ResponseSize = _options.ResponseSize
+                };
+
                 CreateChannels();
 
                 await StartScenario();
@@ -473,14 +479,7 @@ namespace GrpcClient
             Log($"{connectionId} {streamId}: {message}");
         }
 
-        private static SimpleRequest CreateSimpleRequest()
-        {
-            return new SimpleRequest
-            {
-                Payload = new Payload { Body = ByteString.CopyFrom(new byte[_options.RequestSize]) },
-                ResponseSize = _options.ResponseSize
-            };
-        }
+        private static SimpleRequest SimpleRequest { get; set; } = default!;
 
         private static void RecordLatency(int latenchMs, int connectionId)
         {
@@ -523,7 +522,7 @@ namespace GrpcClient
 
         private static CallOptions CreateCallOptions()
         {
-            var callOptions = new CallOptions();
+            var callOptions = default(CallOptions);
             if (_options.Deadline > 0)
             {
                 callOptions = callOptions.WithDeadline(DateTime.UtcNow.AddSeconds(_options.Deadline));
@@ -537,7 +536,7 @@ namespace GrpcClient
             Log(connectionId, streamId, $"Starting {_options.Scenario}");
 
             var client = new BenchmarkService.BenchmarkServiceClient(_channels[connectionId]);
-            var request = CreateSimpleRequest();
+            var request = SimpleRequest;
             using var call = client.StreamingCall(CreateCallOptions());
 
             while (!cts.IsCancellationRequested)
@@ -583,7 +582,7 @@ namespace GrpcClient
             var client = new BenchmarkService.BenchmarkServiceClient(_channels[connectionId]);
             var callOptions = CreateCallOptions();
             callOptions.WithCancellationToken(cts.Token);
-            using var call = client.StreamingFromServer(CreateSimpleRequest(), callOptions);
+            using var call = client.StreamingFromServer(SimpleRequest, callOptions);
 
             while (!cts.IsCancellationRequested)
             {
@@ -634,7 +633,7 @@ namespace GrpcClient
                 try
                 {
                     var start = Environment.TickCount;
-                    var response = await client.UnaryCallAsync(CreateSimpleRequest(), CreateCallOptions());
+                    var response = await client.UnaryCallAsync(SimpleRequest, CreateCallOptions());
                     RecordLatency(Environment.TickCount - start, connectionId);
                 }
                 catch (Exception ex)
